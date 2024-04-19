@@ -9,8 +9,6 @@ import json
 import pandas as pd
 import numpy as np
 
-import gensim
-import gensim.downloader as gensim_api
 import transformers
 
 from transformers import AutoTokenizer, AutoModel
@@ -19,7 +17,7 @@ from datasets import Dataset
 
 import src.text_preprocess as tp
 from src.create_vdb import IndexTextEmbeddings
-from src.prompt_generator import TweetPromptGenerator
+from src.prompt_generator import PromptGenerator
 
 
 this_file_path = os.path.abspath(os.getcwd()) # parse this out so that it works
@@ -38,7 +36,7 @@ create_vector_df = IndexTextEmbeddings(model_name='sentence-transformers/multi-q
 dataset = create_vector_df.create_dataset(poynter_raw, 'clean_text')
 dataset_with_index = create_vector_df.add_faiss_index(dataset, 'embeddings')
 
-tweet_prompt_generator = TweetPromptGenerator(dataset_with_index, 'sentence-transformers/multi-qa-mpnet-base-dot-v1', project_root)
+prompt_generator = PromptGenerator(dataset_with_index, 'sentence-transformers/multi-qa-mpnet-base-dot-v1', project_root)
 
 misinformed_tweets = [
     "Drinking lemon juice cures COVID in 24 hours.",
@@ -58,7 +56,7 @@ def clean_text_list(text_list):
 
 misinformed_tweets = clean_text_list(misinformed_tweets)
 
-prompts = tweet_prompt_generator.generate_prompts_for_tweets(misinformed_tweets)
+prompts = prompt_generator.generate_prompts_for_tweets(misinformed_tweets)
 
 for prompt in prompts:
     print(prompt)
