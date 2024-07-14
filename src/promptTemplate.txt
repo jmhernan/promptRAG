@@ -1,7 +1,0 @@
-Query: {tweet}
-
-I have found several relevant pieces of information based on your query. Here they are:
-
-{retrieved_texts}
-
-Based on this information, [Specific question or task for the LLM].

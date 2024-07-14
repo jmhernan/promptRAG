@@ -25,7 +25,7 @@ def clean_text(text):
     text = REM_NAN_WRD.sub('', text)
     text = str.lower(text)
     text = COVID.sub('covid_19', text)
-    text = COUNT_NUM.sub('COUNT', text)
+    # text = COUNT_NUM.sub('COUNT', text)
     return text
 
 

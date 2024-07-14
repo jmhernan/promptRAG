@@ -3,9 +3,18 @@ from datasets import Dataset
 import faiss
 import torch
 import pandas as pd
+import logging
+
+log = logging.getLogger(__name__)
+
 
 class IndexTextEmbeddings:
     def __init__(self, model_name='sentence-transformers/multi-qa-mpnet-base-dot-v1', device='cpu'):
+        if torch.cuda.is_available():
+            log.info('Using GPU')
+            device = torch.device("cuda")
+        else:
+            log.info('Using CPU')
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, do_lower_case=True)
         self.model = AutoModel.from_pretrained(model_name).to(device)
         self.device = device
