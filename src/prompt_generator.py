@@ -1,7 +1,7 @@
 import os
 from src.create_vdb import IndexTextEmbeddings
 
-class TweetPromptGenerator:
+class PromptGenerator:
     def __init__(self, dataset_with_index, model_name, project_root):
         self.dataset_with_index = dataset_with_index
         self.embeddings_generator = self._initialize_embeddings_generator(model_name)
