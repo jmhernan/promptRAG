@@ -58,7 +58,7 @@ def clean_text_list(text_list):
 
 misinformed_tweets = clean_text_list(misinformed_tweets)
 
-prompts = tweet_prompt_generator.generate_prompts_for_tweets(misinformed_tweets)
+prompts, stories, themes, similarity_scores = tweet_prompt_generator.generate_prompts_for_tweets(misinformed_tweets, clean_tweets=False)
 
 for prompt in prompts:
     print(prompt)

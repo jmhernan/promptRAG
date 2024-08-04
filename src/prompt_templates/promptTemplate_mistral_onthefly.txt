@@ -1,0 +1,8 @@
+
+[INST]You are tasked to classify whether a tweet contains misinformation or not. Use the following examples if it helps.
+
+Here are several examples of COVID misinformation:
+{retrieved_texts}
+Tweet: << {tweet} >>  
+
+[instruction][/INST]
