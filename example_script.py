@@ -24,9 +24,10 @@ from src.prompt_generator import TweetPromptGenerator
 
 this_file_path = os.path.abspath(os.getcwd()) # parse this out so that it works
 # get project root location
-project_root = os.path.split(os.path.split(this_file_path)[0])[0]
-data_dir = os.path.join(project_root, 'data/')
-tfidf_data_dir = os.path.join(project_root, 'data/tfidf/')
+project_root = this_file_path
+# project_root = os.path.split(os.path.split(this_file_path)[0])[0]
+data_dir = os.path.join(this_file_path, 'data/')
+# tfidf_data_dir = os.path.join(project_root, 'data/tfidf/')
 
 poynter_raw = pd.read_csv(os.path.join(data_dir, 'poynter_coded_breon_tab.csv'), encoding='utf8')
 
@@ -58,7 +59,37 @@ def clean_text_list(text_list):
 
 misinformed_tweets = clean_text_list(misinformed_tweets)
 
-prompts, stories, themes, similarity_scores = tweet_prompt_generator.generate_prompts_for_tweets(misinformed_tweets, clean_tweets=False)
+# fix this 
+test_output = tweet_prompt_generator.generate_prompts_for_tweets(misinformed_tweets, clean_tweets=False)
+# check output dimensions to catch things seperately
+print(f"Returned {len(test_output)} items")
+
+for i, item in enumerate(test_output):
+    print(f"Item {i}: type={type(item)}")
+
+for i, item in enumerate(test_output):
+    print(f"\nItem {i}:")
+    if isinstance(item, tuple):
+        for j, part in enumerate(item):
+            print(f"  Element {j}: type={type(part)} | preview={str(part)[:100]}")
+
+#
+output = tweet_prompt_generator.generate_prompts_for_tweets(misinformed_tweets, clean_tweets=False)
+
+prompts = [item[0] for item in output]
+stories = [item[1] for item in output]
+themes = [item[2] for item in output]
+similarity_scores = [item[3] for item in output]
+
+
+#prompts, stories, themes, similarity_scores = tweet_prompt_generator.generate_prompts_for_tweets(misinformed_tweets, clean_tweets=False)
 
 for prompt in prompts:
     print(prompt)
+
+for prompt, story_list, theme_list, score_array in output:
+    print("Prompt:", prompt)
+    print("Stories:", story_list)
+    print("Themes:", theme_list)
+    print("Similarity scores:", score_array)
+    print("—" * 50)
