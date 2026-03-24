@@ -17,7 +17,7 @@ class TweetPromptGenerator:
     def _load_prompt_template(self, project_root, template_path):
         if template_path is None:
             template_path = os.path.join(project_root, 
-                                        'promptRAG/src/prompt_templates/promptTemplate.txt')
+                                        'src/prompt_templates/promptTemplate.txt')
         with open(template_path, 'r') as file:
             prompt_template = file.read()
         return prompt_template
