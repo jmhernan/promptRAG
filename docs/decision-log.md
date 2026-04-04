@@ -148,3 +148,89 @@ updated to handle tab-separated files.
 
 **Decision:** All three fixed in `docs/plan.md`. No architectural changes — these are
 implementation-level bug prevention.
+
+---
+
+## Entry 006 — Wrong embedding model: base MLM vs. fine-tuned retrieval
+
+**Date:** 2026-04-04
+**Phase:** Implementation (caught during testing)
+
+**What happened:**
+The vector store test `test_add_and_query` failed — querying "feline sitting" returned
+"dogs love to play fetch" instead of "the cat sat on the mat." SentenceTransformers logged:
+*"No sentence-transformers model found with name answerdotai/ModernBERT-base. Creating a
+new one with mean pooling."*
+
+**Root cause:**
+The research doc (Section 4) recommended `answerdotai/ModernBERT-base` as the default
+embedding model. This is a **base MLM checkpoint** — a masked language model that has not
+been fine-tuned for sentence similarity or retrieval. The BEIR/MTEB scores cited in the
+research doc are from fine-tuned versions, not the base checkpoint. Using it directly
+produces embeddings that are not optimized for semantic search.
+
+The user's original model (`multi-qa-mpnet-base-dot-v1`) works because it was fine-tuned
+via contrastive learning specifically for semantic search (Reimers & Gurevych, 2019). The
+research doc correctly described this in Section 2 but failed to apply the same logic
+when recommending ModernBERT.
+
+This is exactly the kind of error the RPI methodology is designed to catch — a wrong
+assumption in the research doc cascading into broken implementation.
+
+**The correct model:** `nomic-ai/modernbert-embed-base` — Nomic AI fine-tuned ModernBERT-base
+for retrieval embeddings using their contrastive training pipeline. MTEB 62.62, BEIR nDCG@10
+44.98, 768 dimensions. Works with `SentenceTransformer("nomic-ai/modernbert-embed-base")`
+out of the box. Requires `search_query:` / `search_document:` input prefixes.
+
+Also discovered: `freelawproject/modernbert-embed-base_finetune_512` — a legal-domain
+fine-tune of the same model, trained on court opinions. Directly relevant for eviction records
+dataset (Phase 2). 99.6% triplet accuracy on legal text.
+
+**Decision:** Switch default embedding model from `answerdotai/ModernBERT-base` to
+`nomic-ai/modernbert-embed-base`.
+
+**Changes made:**
+- `configs/wolf_archive.yaml` — model → `nomic-ai/modernbert-embed-base`
+- `configs/covid_poynter.yaml` — model → `nomic-ai/modernbert-embed-base`
+- `src/promptrag/embeddings.py` — added `query_prefix`/`document_prefix` params and
+  `is_query` flag to `encode()` for asymmetric prefix handling
+- `src/promptrag/vector_store.py` — passes `is_query=False` for document encoding,
+  `is_query=True` for query encoding
+- `docs/research.md` Section 4 — added "Critical distinction" note, updated model table
+  to clearly mark base MLM vs. fine-tuned retrieval models, updated recommendation
+- Collection naming: `wolf_archive_modernbert_embed`, `covid_modernbert_embed`
+
+**NeoBERT impact:** The base `chandar-lab/NeoBERT` checkpoint has the same problem — it's
+a base MLM, not fine-tuned for retrieval. A NeoBERT comparison would require finding or
+training a retrieval fine-tune. This narrows the immediate comparison to
+`nomic-ai/modernbert-embed-base` vs. `multi-qa-mpnet-base-dot-v1`.
+
+**Lesson:** When a paper reports BEIR/MTEB scores for a model architecture, always verify
+whether those scores come from the base checkpoint or a fine-tuned version. The model card
+and the paper will specify; the HuggingFace model ID alone can be misleading.
+
+---
+
+## Open TODOs
+
+*Tracked items that are not blocking Phase 1 but need attention. Move to a Decision Log entry
+when resolved.*
+
+### Retrieval quality
+- [ ] Run baseline comparison: `multi-qa-mpnet-base-dot-v1` vs. `nomic-ai/modernbert-embed-base` on Wolf Archive (same queries, compare scores and ranking)
+- [ ] Investigate low absolute similarity scores (0.45–0.47) on Wolf Archive — expected for out-of-domain text? Or query phrasing issue?
+- [ ] Experiment with query phrasing — observational register vs. abstract queries
+
+### Wolf Archive labeling (Phase 2 gate)
+- [ ] Identify the 24 pretend-play episodes from Xu & Hernandez (2025) in `4ChildObservation_MasterFile.csv` by `Index`
+- [ ] Create gold set CSV with episode IDs and expert codings
+- [ ] Run pretend-play/conflict benchmark test once gold set exists
+
+### COVID/Poynter eval
+- [ ] Run `test_covid_eval.py` — verify retrieval metrics on labeled data
+- [ ] Validate that `story_copy` column has no nulls (or confirm null filtering works)
+
+### Infrastructure
+- [ ] Add `accelerate` to `pyproject.toml` dependencies (manually installed during testing)
+- [ ] Update plan.md to reflect what actually shipped vs. planned
+- [ ] Refresh SLM model list (Phi-4, Qwen3, Gemma 3 etc.) before first cross-model comparison
