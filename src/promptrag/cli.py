@@ -4,7 +4,7 @@ from promptrag.pipeline import RAGPipeline, load_config
 
 @click.group()
 def main():
-    """promptRAG — Research-team-grade RAG pipeline."""
+    """promptrag — Research-team-grade RAG pipeline."""
     pass
 
 

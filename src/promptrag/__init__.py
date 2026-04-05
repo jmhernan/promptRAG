@@ -1,1 +1,1 @@
-"""promptRAG — Research-team-grade RAG pipeline for institutional text."""
+"""promptrag — Research-team-grade RAG pipeline for institutional text."""
