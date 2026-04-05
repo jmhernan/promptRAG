@@ -1,5 +1,0 @@
-Here are several examples of COVID misinformation:
-{retrieved_texts}
-
-Statement: << {tweet} >>
-[instruction]

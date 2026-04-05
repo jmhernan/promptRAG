@@ -1,122 +1,165 @@
-# Prompt Generator Using RAG
+# promptRAG
 
-Generate prompts to input to a Large Language Model of your choosing using RAG (Retrieval Augmented Generation). This implementation helps you separate out the prompt engineering process for any LLM task, and helps you scale and validate the prompt generation process.
+Research-team-grade RAG pipeline for institutional and administrative text. Built for rigorous, reproducible evaluation of retrieval and generation quality — not a wrapper around GPT-4.
 
-## Overview
+## What This Is
 
-promptRAG takes a knowledge base (e.g. a CSV of labeled misinformation examples), builds a vector index from it, and then for any new input text retrieves the most relevant examples to assemble a context-rich prompt ready to send to an LLM. The current example dataset focuses on COVID misinformation detection using the Poynter fact-check dataset.
+promptRAG is a clean, modular RAG pipeline designed for small research teams working with messy, high-stakes text: court records, field notes, policy documents. It treats **evaluation as a first-class concern** — every run is logged to SQLite with full provenance, enabling apples-to-apples comparisons across embedding models, LLMs, and retrieval configurations.
+
+The research focus is on **small language models (SLMs) in retrieval-augmented settings** — understanding where Phi, Qwen, Gemma, and Mistral-class models fail, and whether failures stem from retrieval or generation.
+
+### Origin
+
+The semantic search approach in this pipeline was first published in:
+
+> Xu, J. & Hernandez, J. M. (2025). "Reading children's moral dramas in anthropological fieldnotes: A human–AI hybrid approach." *Cambridge Forum on AI: Culture and Society*, 1, e6. doi:10.1017/cfc.2025.10008
 
 ## Pipeline
 
 ```
-Raw Data (CSV)
+Data (CSV)
   │
-  ▼  text_preprocess.py
-Clean Text
+  ▼  chunker.py
+Chunk Documents (fixed-size, with pass-through for short docs)
   │
-  ▼  create_vdb.py
-Generate Embeddings (sentence-transformers)
+  ▼  embeddings.py
+Encode with SentenceTransformer (nomic-ai/modernbert-embed-base)
   │
-  ▼
-Build FAISS Vector Index
+  ▼  vector_store.py
+Store in ChromaDB (persistent, metadata-filtered)
   │
-  ▼  prompt_generator.py
-Query Index for Similar Documents
+  ▼  prompt_engine.py
+Build Chat Messages (Jinja2 templates)
   │
-  ▼
-Format Prompt from Template
+  ▼  llm_backend.py
+Generate with HuggingFace transformers (apply_chat_template)
   │
-  ▼
-LLM-Ready Prompt
+  ▼  evaluation.py
+Log Run to SQLite + Compute Retrieval Metrics
 ```
 
 ## Project Structure
 
 ```
-src/
-  text_preprocess.py      # Text cleaning utilities
-  create_vdb.py           # Embedding generation & FAISS index creation
-  prompt_generator.py     # RAG prompt assembly
-  transformer_playground.py  # Educational transformer implementation (not part of main pipeline)
-  prompt_templates/
-    promptTemplate.txt                    # Generic prompt template
-    promptTemplate_mistral_onthefly.txt   # Mistral-specific prompt template
-data/
-  poynter_coded_breon_tab.csv   # Poynter COVID misinformation dataset
-example_script.py       # End-to-end CLI demo
-example_notebook.ipynb  # Interactive Jupyter notebook demo
-environment.yml         # Conda environment specification
+src/promptrag/
+  __init__.py
+  embeddings.py       # SentenceTransformer wrapper — MPS/CUDA/CPU, batch encoding, query prefixes
+  chunker.py          # Fixed-size word-count chunking with overlap
+  vector_store.py     # ChromaDB persistent client — add, query, collection management
+  llm_backend.py      # HuggingFace transformers text-generation pipeline
+  prompt_engine.py    # Jinja2 chat message builder
+  evaluation.py       # Retrieval metrics (P@k, R@k, MRR, nDCG@k) + SQLite run logger
+  pipeline.py         # End-to-end orchestrator — ingest, query, log
+  cli.py              # Click CLI — promptrag ingest / query
+configs/
+  wolf_archive.yaml       # Wolf Archive field notes config
+  covid_poynter.yaml      # COVID/Poynter misinformation config
+scripts/
+  test_retrieval.py       # Retrieval-only test (no LLM needed)
+  test_full_pipeline.py   # Full pipeline test (requires LLM download)
+tests/
+  test_embeddings.py
+  test_chunker.py
+  test_vector_store.py
+  test_evaluation.py
+docs/
+  research.md         # Research document — codebase audit, literature, decisions
+  plan.md             # Implementation plan
+  decision-log.md     # Real-time decision log
+experiments/          # Runtime artifacts — ChromaDB, SQLite (gitignored)
 ```
-
-## Steps
-
-### 1. Text Preprocessing (`src/text_preprocess.py`)
-
-Cleans raw text from the knowledge base:
-
-- Removes symbols and non-alphanumeric characters
-- Normalizes whitespace and converts to lowercase
-- Standardizes COVID-related terms (e.g. → `covid_19`)
-- Strips non-ASCII characters and empty entries
-- Supports parallel processing for large datasets via `ProcessPoolExecutor`
-
-Also provides helper utilities like `get_top_n_words()` for corpus frequency analysis.
-
-### 2. Embedding & Indexing (`src/create_vdb.py`)
-
-Generates vector embeddings and builds a FAISS index for fast similarity search:
-
-- Loads the `multi-qa-mpnet-base-dot-v1` sentence-transformer model (auto-detects GPU/CPU)
-- Tokenizes text and produces 768-dimensional embeddings using CLS pooling
-- Wraps the data in a HuggingFace `Dataset` and adds an embeddings column
-- Creates a FAISS index on the dataset for efficient nearest-neighbor lookup
-
-### 3. Prompt Generation (`src/prompt_generator.py`)
-
-The core RAG step — retrieves relevant examples and assembles the final prompt:
-
-- Queries the FAISS index to find the top-k most similar documents to a given input
-- Formats retrieved documents as bullet points with similarity scores
-- Fills a prompt template with the input text and retrieved context
-- Returns the complete prompt along with the retrieved texts, discussion themes, and similarity scores
-
-### 4. Prompt Templates (`src/prompt_templates/`)
-
-Two templates are included:
-
-- **`promptTemplate.txt`** — Generic template with placeholders for retrieved examples and the target statement
-- **`promptTemplate_mistral_onthefly.txt`** — Mistral-formatted template using `[INST]` tokens, with an explicit classification instruction
-
-Templates use `{retrieved_texts}` and `{tweet}` placeholders that get filled at generation time.
 
 ## Usage
 
-### Script
+### CLI
 
 ```bash
-python example_script.py
+# Ingest a dataset into ChromaDB
+promptrag ingest --config configs/wolf_archive.yaml
+
+# Run a query
+promptrag query --config configs/wolf_archive.yaml "children playing cooperatively"
 ```
 
-Loads the Poynter dataset, builds the vector index, and generates prompts for a set of sample tweets.
+### Python
 
-### Notebook
+```python
+from promptrag.pipeline import RAGPipeline, load_config
 
-Open `example_notebook.ipynb` for an interactive walkthrough of the same pipeline.
+config = load_config("configs/wolf_archive.yaml")
+pipeline = RAGPipeline(config)
+pipeline.ingest()
+
+result = pipeline.query("children fighting or in physical conflict")
+print(result["llm_output"])
+print(result["scores"])
+
+pipeline.close()
+```
+
+### Retrieval Only (no LLM download)
+
+```python
+from promptrag.embeddings import EmbeddingModel
+from promptrag.vector_store import VectorStore
+from promptrag.chunker import chunk_documents
+import polars as pl
+
+model = EmbeddingModel(device="mps")
+store = VectorStore(model)
+coll = store.get_or_create_collection("wolf_archive_modernbert_embed")
+
+df = pl.read_csv("data/4ChildObservation_MasterFile.csv")
+chunks = chunk_documents(df["text"].to_list(), [str(x) for x in df["Index"].to_list()])
+store.add_chunks(coll, chunks)
+
+results = store.query(coll, ["children playing a pretend war game"], k=5)
+```
 
 ## Setup
 
 ```bash
-conda env create -f environment.yml
-conda activate twitter_pytorch
+# Python 3.11+ required
+pip install -e ".[dev]"
 ```
 
 ### Key Dependencies
 
-- **Embeddings**: `sentence-transformers`, `transformers`, HuggingFace `datasets`
-- **Vector Search**: `faiss-cpu`
-- **Deep Learning**: `pytorch`
-- **Data**: `pandas`, `numpy`
-- **NLP**: `nltk`, `gensim`, `scikit-learn`
+- **Embeddings**: `sentence-transformers`, `nomic-ai/modernbert-embed-base`
+- **Vector Store**: `chromadb`
+- **LLM**: `transformers` (HuggingFace pipelines)
+- **Data**: `polars`
+- **Evaluation**: `sqlite3` (stdlib)
+- **CLI**: `click`
+- **Templates**: `jinja2`
+
+### Hardware
+
+Designed for Apple Silicon (M4 Max). Uses MPS backend with automatic fallback to CPU. CUDA supported where available.
+
+## Datasets
+
+| Dataset | Text Type | Task | Status |
+|---|---|---|---|
+| Wolf Archive | Short field notes (~300 words) | Semantic theme classification | Active |
+| COVID/Poynter | Short tweets | Misinformation classification | Active (eval metrics) |
+| Eviction Records | Long legal text | Targeted extraction | Phase 2 |
+
+## Architectural Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Vector store | ChromaDB | Persistence + metadata filtering built in |
+| Embedding model | `nomic-ai/modernbert-embed-base` | Fine-tuned ModernBERT for retrieval; MTEB 62.6 |
+| Evaluation logging | SQLite + Polars | Queryable, local, no infrastructure |
+| LLM backend | HuggingFace `transformers` | Model internals access for SLM eval |
+| DataFrame library | Polars | Fast, lazy eval, reads SQLite directly |
+
+See [docs/research.md](docs/research.md) for full rationale and [docs/decision-log.md](docs/decision-log.md) for the audit trail.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Additional: Transformer Playground
 

@@ -1,0 +1,34 @@
+dataset:
+  name: covid
+  path: data/poynter_coded_breon_tab.csv
+  text_column: story_copy
+  id_column: rowid
+  label_column: code                 # misinformation category — used for retrieval eval
+  separator: "\t"                    # tab-separated
+
+embedding:
+  model: nomic-ai/modernbert-embed-base
+  device: mps
+  batch_size: 32
+
+chunking:
+  strategy: fixed
+  chunk_size: 512                    # word count (not tokens)
+  chunk_overlap: 50
+
+vector_store:
+  provider: chromadb
+  persist_directory: experiments/chromadb
+  collection_name: covid_modernbert_embed
+
+retrieval:
+  k: 5
+  similarity_metric: cosine
+
+llm:
+  model: microsoft/Phi-3-mini-4k-instruct
+  device_map: mps
+  max_new_tokens: 256
+
+evaluation:
+  db_path: experiments/runs.db
