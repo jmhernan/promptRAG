@@ -160,7 +160,3 @@ See [docs/research.md](docs/research.md) for full rationale and [docs/decision-l
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-## Additional: Transformer Playground
-
-`src/transformer_playground.py` is a standalone educational implementation of transformer components (multi-head attention, feed-forward layers, encoder stack) with attention visualization. It is **not** part of the main RAG pipeline.

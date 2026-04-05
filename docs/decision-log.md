@@ -234,3 +234,8 @@ when resolved.*
 - [ ] Add `accelerate` to `pyproject.toml` dependencies (manually installed during testing)
 - [ ] Update plan.md to reflect what actually shipped vs. planned
 - [ ] Refresh SLM model list (Phi-4, Qwen3, Gemma 3 etc.) before first cross-model comparison
+
+### Rename
+- [ ] Rename project to `promptRagEval` — do in a single dedicated commit, not mixed with implementation
+- [ ] Order: (1) rename GitHub repo in Settings, (2) `git remote set-url origin` locally, (3) rename local directory, (4) update package name in code, (5) commit + push
+- [ ] Update copilot-instructions.md, docs/, README after rename
