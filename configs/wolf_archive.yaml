@@ -1,0 +1,34 @@
+dataset:
+  name: wolf_archive
+  path: data/4ChildObservation_MasterFile.csv
+  text_column: text
+  id_column: Index
+  # No gold set in Phase 1 — labels do not exist yet.
+  # gold_set_path: data/wolf_archive_gold.csv  # Phase 2
+
+embedding:
+  model: nomic-ai/modernbert-embed-base
+  device: mps
+  batch_size: 32
+
+chunking:
+  strategy: fixed
+  chunk_size: 512                    # word count (not tokens) — Wolf Archive median is 306, most pass through
+  chunk_overlap: 50
+
+vector_store:
+  provider: chromadb
+  persist_directory: experiments/chromadb
+  collection_name: wolf_archive_modernbert_embed  # per naming convention
+
+retrieval:
+  k: 5
+  similarity_metric: cosine
+
+llm:
+  model: microsoft/Phi-3-mini-4k-instruct
+  device_map: mps
+  max_new_tokens: 256
+
+evaluation:
+  db_path: experiments/runs.db

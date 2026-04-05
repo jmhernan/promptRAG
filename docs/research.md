@@ -265,6 +265,22 @@ of the encoder-only architecture with production RAG as an explicit design targe
 
 **HuggingFace model IDs:** `answerdotai/ModernBERT-base`, `answerdotai/ModernBERT-large`
 
+**Critical distinction — base MLM vs. fine-tuned retrieval model:**
+The model IDs above are **base MLM checkpoints** — masked language models that have not been
+fine-tuned for sentence similarity or retrieval. They cannot be used directly as embedding
+models in a RAG pipeline. This is the same distinction as BERT-base vs. `multi-qa-mpnet-base-dot-v1`:
+the former is a raw encoder, the latter is fine-tuned via contrastive learning for semantic search.
+
+The correct retrieval-ready model is **`nomic-ai/modernbert-embed-base`** — fine-tuned from
+ModernBERT-base by Nomic AI using their contrastive training pipeline (Nussbaum et al., 2024).
+MTEB overall 62.62, BEIR nDCG@10 44.98, 768-dimensional vectors, supports Matryoshka
+dimensions (256). Requires input prefixes: `search_query:` for queries, `search_document:` for
+documents. This is the model that should be used in the pipeline.
+
+Also notable: **`freelawproject/modernbert-embed-base_finetune_512`** — a legal-domain fine-tune
+of `modernbert-embed-base` trained on court opinions (Free Law Project). Directly relevant for
+the eviction records dataset. 99.6% triplet accuracy on legal text. Phase 2 candidate.
+
 ---
 
 ### NeoBERT (Le Breton et al., 2025 — Mila / Polytechnique Montréal)
@@ -319,17 +335,22 @@ of design trade-offs and a stronger emphasis on reproducibility and fair evaluat
 
 | Model | Params | Max Context | Key Architecture | MTEB/BEIR | Notes |
 |---|---|---|---|---|---|
-| `multi-qa-mpnet-base-dot-v1` | 109M | 512 | Original BERT | — | Current; outdated |
+| `multi-qa-mpnet-base-dot-v1` | 109M | 512 | Original BERT | — | Current; outdated but fine-tuned for retrieval |
+| `nomic-ai/modernbert-embed-base` | 149M | 8192 | Modern encoder | 62.6/45.0 | **Recommended default** — fine-tuned for retrieval |
 | `BAAI/bge-base-en-v1.5` | 109M | 512 | BERT-based | Strong | Well-benchmarked baseline |
 | `all-MiniLM-L6-v2` | 22M | 256 | Distilled | Fast | Lightweight baseline |
 | `nomic-ai/nomic-embed-text-v1.5` | 137M | 8192 | NomicBERT | Good | Matryoshka dims |
-| `answerdotai/ModernBERT-base` | 149M | 8192 | Modern encoder | Best BEIR | Recommended default |
-| `answerdotai/ModernBERT-large` | 395M | 8192 | Modern encoder | Best overall | If GPU permits |
-| `chandar-lab/NeoBERT` | 250M | 4096 | Modern encoder | Best MTEB | Faster inference |
+| `answerdotai/ModernBERT-base` | 149M | 8192 | Modern encoder | — | **Base MLM only** — not for direct retrieval use |
+| `answerdotai/ModernBERT-large` | 395M | 8192 | Modern encoder | — | **Base MLM only** — needs fine-tuning |
+| `chandar-lab/NeoBERT` | 250M | 4096 | Modern encoder | Best MTEB | **Base MLM only** — needs fine-tuning |
+| `freelawproject/modernbert-embed-base_finetune_512` | 149M | 8192 | Modern encoder | — | Legal-domain fine-tune; Phase 2 for eviction |
 
-**Working recommendation:** Start with `ModernBERT-base` as the default. Test `NeoBERT` as a
-direct comparison point — the SLM evaluation angle means the embedding model choice itself
-should be a first-class experiment, not a fixed constant.
+**Working recommendation:** Start with `nomic-ai/modernbert-embed-base` as the default — it is
+ModernBERT fine-tuned for retrieval and works with SentenceTransformers out of the box. Requires
+`search_query:` / `search_document:` prefixes. Compare against `multi-qa-mpnet-base-dot-v1`
+(the published Wolf Archive model) as the baseline to measure whether the architecture upgrade
+improves retrieval quality. NeoBERT comparison requires finding or training a retrieval
+fine-tune — the base checkpoint is not directly usable.
 
 ---
 

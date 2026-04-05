@@ -24,3 +24,6 @@ venv/
 
 # Data
 data/
+
+# Experiments (generated at runtime)
+experiments/
