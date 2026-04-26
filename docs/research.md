@@ -2,8 +2,9 @@
 
 *Last updated: April 2026. Incorporates original codebase audit, project reframing conversations,
 RPI methodology notes, literature on ModernBERT (Warner et al., 2024) and NeoBERT (Le Breton et al., 2025),
-and the published Wolf Archive paper (Xu & Hernandez, 2025) which documents the origin implementation
-of this pipeline's core semantic search approach.*
+the published Wolf Archive paper (Xu & Hernandez, 2025) which documents the origin implementation
+of this pipeline's core semantic search approach, and the Phase 2 research framing of
+classification-via-RAG for nuanced document classification tasks (Section 7).*
 
 ---
 
@@ -467,7 +468,179 @@ categories) rather than a novel free-form question. Both patterns should be supp
 
 ---
 
-## 7. Module-by-Module Codebase Review
+## 7. Classification via RAG
+
+*Added April 2026. Frames nuanced document classification as a first-class task type for
+the pipeline, building on the Phase 1 retrieval and evaluation infrastructure.*
+
+### Why RAG for classification
+
+Standard classification approaches assume that surface features reliably discriminate between
+categories. For institutional and domain-expert-interpreted text, this assumption frequently
+fails:
+
+- **Traditional ML classifiers** (TF-IDF + logistic regression, Naive Bayes) learn exactly
+  the surface lexical features that are misleading in nuanced domains. On the Wolf Archive,
+  a bag-of-words model would learn that "kill," "hit," and "die" predict the conflict
+  category — which is wrong for pretend-play episodes that use this language cooperatively.
+
+- **Fine-tuned transformer classifiers** (BERT-style sequence classification heads) overfit
+  to the same misleading signal when labeled data is scarce. The Wolf Archive has 24 labeled
+  pretend-play episodes — far too few to fine-tune. The COVID/Poynter dataset has 316 rows
+  spread across 12+ categories. The eviction records have expert-labeled gold sets but not at
+  the scale that fine-tuning requires for stable generalization.
+
+- **Zero-shot LLM classification** (prompting GPT/Claude with category descriptions) can
+  work but is non-reproducible (API-dependent), expensive at scale, and — as documented in
+  Xu & Hernandez (2025) — introduces its own biases (adult-centric, Western-centric moral
+  framing) that are just as problematic as the embedding failures they replace.
+
+RAG-based classification sidesteps these problems by reframing classification as a
+**retrieval + reasoning task**: find the most relevant labeled examples, then classify by
+analogical reasoning over those examples. The retrieval step replaces feature engineering;
+the labeled examples provide in-context evidence that a small model can reason over without
+any parameter updates.
+
+### Three classification strategies
+
+The pipeline should support three complementary classification strategies, each suited to
+different data regimes and task requirements. All three share the same evaluation
+infrastructure and logging schema.
+
+**Strategy 1: Anchor-vector classification (zero-shot)**
+
+Encode category *descriptions* (not individual documents) as fixed anchor vectors. Score
+every document against all anchors simultaneously. Softmax normalization produces a
+probability distribution over categories per document.
+
+This is the Wolf Archive approach from the published paper — theme vectors constructed
+from keyword lists, each observation scored against six themes via cosine similarity.
+Generalizing it means accepting any set of category descriptions as anchors.
+
+Best when:
+- Category descriptions are available and semantically meaningful
+- Labeled examples are unavailable or very sparse
+- The task structure is "assign to one or more known categories" rather than "discover
+  categories"
+- Fast batch classification is needed (no LLM inference)
+
+Limitations:
+- Performance depends entirely on embedding model quality
+- Sensitive to how category descriptions are phrased
+- Cannot capture categories that are defined by exceptions or context-dependent rules
+  (cf. pretend-play: defined by the *absence* of real aggression despite conflict vocabulary)
+
+**Strategy 2: kNN in embedding space (few-shot, no generation)**
+
+Index a labeled corpus. For each unlabeled document, retrieve the k nearest labeled
+neighbors. Classify by majority vote (or similarity-weighted vote) over their labels.
+
+This is k-nearest-neighbor classification using transformer embeddings as the feature space.
+Khandelwal et al. (2020) demonstrated the power of this approach with kNN-LM. The
+classification variant requires no training and benefits directly from embedding model
+quality.
+
+Best when:
+- A small labeled set exists (tens to low hundreds per category)
+- Categories are well-separated in embedding space
+- Deterministic, reproducible output is required
+- Latency matters — no LLM inference overhead
+
+Limitations:
+- Fails when categories overlap in embedding space (the pretend-play/conflict case)
+- No ability to reason about *why* a document belongs to a category
+- Sensitive to k — too small gives noise, too large blurs boundaries
+
+**Strategy 3: RAG-augmented classification (few-shot + generation)**
+
+Retrieve labeled examples as in-context demonstrations, then prompt the LLM to classify
+with explicit reasoning. This is retrieval-augmented in-context learning applied to
+classification.
+
+Liu et al. (2022, KATE) showed that *which* examples are retrieved matters more than how
+many — dynamically selected demonstrations outperform random few-shot examples. Rubin et al.
+(2022, EPR) trained a retriever specifically for selecting informative in-context examples.
+
+Best when:
+- Categories require contextual reasoning to distinguish
+- Expert rationale can be attached to labeled examples ("this is pretend-play *because*
+  the children are laughing and taking turns")
+- The distinction between categories is anthropological / interpretive, not lexical
+- Explanation of the classification is as important as the label itself
+
+Limitations:
+- Requires LLM inference — slower, non-deterministic unless temperature=0
+- Quality depends on both retrieval quality and generation quality (but the pipeline's
+  separated evaluation design makes this measurable)
+- Small models may struggle with nuanced reasoning — this is the SLM evaluation question
+
+### How the three strategies relate
+
+The strategies form a progression from cheapest/simplest to most expressive:
+
+```
+Anchor vectors  →  kNN voting  →  RAG + LLM reasoning
+   (zero-shot)     (few-shot)      (few-shot + generation)
+   No labels       Labels needed   Labels + LLM needed
+   Embedding only  Embedding only  Full pipeline
+   Fast, batch     Fast, batch     Slower, per-query
+```
+
+Critically, they share the same retrieval infrastructure. The difference is what happens
+*after* retrieval: nothing (anchor vectors return scores directly), aggregation (kNN votes),
+or generation (LLM reasons over retrieved examples). This means the evaluation layer can
+isolate where classification quality breaks down — is it a retrieval problem (wrong neighbors)
+or a generation problem (right neighbors, wrong label)?
+
+### Classification evaluation
+
+Classification evaluation extends — does not replace — the retrieval evaluation design in
+Section 6. The retrieval metrics (precision@k, recall@k, nDCG) remain the foundation.
+Classification adds a task-level layer:
+
+- **Accuracy** — fraction of documents correctly classified
+- **Macro-F1** — per-category F1 averaged across categories (penalizes poor performance
+  on minority categories)
+- **Confusion matrix** — critical for diagnosing systematic misclassification patterns
+  (e.g., pretend-play → conflict)
+- **Per-category precision/recall** — which categories does the pipeline handle well,
+  and which does it confuse?
+
+The evaluation question that connects classification to the project's core contribution:
+**does retrieval quality predict classification quality?** If precision@k is high but
+classification accuracy is low, the problem is in generation (or in the category structure
+itself). If precision@k is low, classification cannot succeed regardless of the LLM. The
+separated evaluation design makes this decomposition possible.
+
+### Connection to existing datasets
+
+| Dataset | Classification task | Strategy fit | Gold set status |
+|---|---|---|---|
+| COVID/Poynter | Misinformation category (12+ labels) | kNN + RAG-augmented | Ready — `code` column |
+| Wolf Archive | Behavioral theme (6 themes) | Anchor vectors + RAG-augmented | Phase 2 — 24 episodes to label |
+| Eviction records | Reason for eviction | RAG-augmented (extraction → classification) | Available — expert-labeled |
+
+The COVID/Poynter dataset is the immediate testbed: labeled, multi-class, short text. The
+Wolf Archive is the harder, more publishable case: nuanced categories, documented failure
+mode, expert-validated ground truth. The progression from COVID (validate infrastructure)
+to Wolf Archive (validate research claim) mirrors the Phase 1 strategy.
+
+### Relevant literature
+
+- **kNN-LM** (Khandelwal et al., 2020) — Nearest-neighbor interpolation with language
+  models. Demonstrates that retrieval from a datastore can substitute for model capacity.
+- **KATE** (Liu et al., 2022) — kNN-augmented in-context learning. Retrieval-selected
+  examples outperform random few-shot for classification and other tasks.
+- **EPR** (Rubin et al., 2022) — Efficient Prompt Retrieval. Trains a retriever to select
+  informative in-context examples. Shows that retriever quality directly impacts downstream
+  task performance.
+- **RAFT** (Meng et al., 2022) — Retrieval-Augmented Fine-Tuning. Combines retrieval with
+  lightweight fine-tuning for classification. Relevant if fine-tuning becomes viable with
+  more labeled data.
+
+---
+
+## 8. Module-by-Module Codebase Review
 
 *Preserved from original research document. Confirms what needs to change and why.*
 
@@ -583,7 +756,7 @@ categories) rather than a novel free-form question. Both patterns should be supp
 
 ---
 
-## 8. Vector Store Decision
+## 9. Vector Store Decision
 
 **Current:** FAISS via HuggingFace `datasets`. Functional but no persistence.
 
@@ -602,7 +775,7 @@ filtering (run ID, dataset name, model name) which FAISS doesn't support nativel
 
 ---
 
-## 9. Dependencies and Environment
+## 10. Dependencies and Environment
 
 ### Current state (do not carry over)
 
@@ -655,7 +828,7 @@ pandas                 # transitional / compatibility (optional)
 
 ---
 
-## 10. Files: Keep / Drop / Build
+## 11. Files: Keep / Drop / Build
 
 | File | Decision | Notes |
 |---|---|---|
@@ -676,7 +849,7 @@ pandas                 # transitional / compatibility (optional)
 
 ---
 
-## 11. Architectural Decisions
+## 12. Architectural Decisions
 
 All five blocking decisions are resolved. These are locked in and inform the implementation plan.
 
@@ -833,7 +1006,7 @@ correct as targets; the specific version tags should be updated.
 
 ---
 
-## 12. Relevant Prior Art
+## 13. Relevant Prior Art
 
 **Xu, J. & Hernandez, J. M. (2025)** — "Reading children's moral dramas in anthropological
 fieldnotes: A human–AI hybrid approach." *Cambridge Forum on AI: Culture and Society*, 1, e6.

@@ -185,7 +185,7 @@ what was observed, and what this means for the project going forward.
 Research Doc: @docs/research.md
 I want to compare [model A] vs [model B] on [dataset].
 Collection naming: {dataset}_{model_shortname}
-Log schema: per research.md §11 Decision 4
+Log schema: per research.md §12 Decision 4
 Help me set up the experiment. Do not write code until
 the experiment design is confirmed.
 ```
@@ -224,7 +224,7 @@ If you receive a dumb zone prompt, say so directly:
 - [ ] Each module change has a code snippet showing what changes
 - [ ] Wolf Archive benchmark is a defined test point
 - [ ] ChromaDB collection schema matches naming convention in research.md
-- [ ] SQLite run record schema matches research.md §11 Decision 4
+- [ ] SQLite run record schema matches research.md §12 Decision 4
 - [ ] MPS device configuration is explicit
 - [ ] Scope exclusions are listed (what is NOT in this phase)
 
